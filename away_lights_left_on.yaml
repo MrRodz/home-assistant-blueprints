@@ -9,7 +9,6 @@ blueprint:
     presence_sensor:
       name: Presence sensor
       description: Sensor that is OFF when you are away.
-      default: binary_sensor.rodz_home
       selector:
         entity:
           filter:
@@ -36,13 +35,14 @@ blueprint:
           step: 5
           unit_of_measurement: minutes
 
-notify_device:
-  name: Device to notify
-  description: Select the phone or tablet running the Home Assistant Companion App.
-  selector:
-    device:
-      filter:
-        - integration: mobile_app
+    notify_device:
+      name: Device to notify
+      description: >
+        Select the phone or tablet running the Home Assistant Companion App.
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
 
 variables:
   ignored_lights: !input ignored_lights
@@ -85,49 +85,35 @@ actions:
               }}
 
         sequence:
-            - device_id: !input notify_device
-              domain: mobile_app
-              type: notify
-              title: >
-                There are {{
-                  states.light
-                  | selectattr('state', 'eq', 'on')
-                  | rejectattr('entity_id', 'in', ignored_lights)
-                  | list
-                  | count
-                }} lights on
-              message: >
-                {{
-                  states.light
-                  | selectattr('state', 'eq', 'on')
-                  | rejectattr('entity_id', 'in', ignored_lights)
-                  | map(attribute='name')
-                  | list
-                  | join(', ')
-                }}
-              data:
-                actions:
-                  - action: LSWITCHOFF
-                    title: Turn Off
-                    authenticationRequired: false
-                    icon: sfsymbols:lightbulb.2
+          - device_id: !input notify_device
+            domain: mobile_app
+            type: notify
 
-              message: >
-                {{
-                  states.light
-                  | selectattr('state', 'eq', 'on')
-                  | rejectattr('entity_id', 'in', ignored_lights)
-                  | map(attribute='name')
-                  | list
-                  | join(', ')
-                }}
+            title: >
+              There are {{
+                states.light
+                | selectattr('state', 'eq', 'on')
+                | rejectattr('entity_id', 'in', ignored_lights)
+                | list
+                | count
+              }} lights on
 
-              data:
-                actions:
-                  - action: LSWITCHOFF
-                    title: Turn Off
-                    authenticationRequired: false
-                    icon: sfsymbols:lightbulb.2
+            message: >
+              {{
+                states.light
+                | selectattr('state', 'eq', 'on')
+                | rejectattr('entity_id', 'in', ignored_lights)
+                | map(attribute='name')
+                | list
+                | join(', ')
+              }}
+
+            data:
+              actions:
+                - action: LSWITCHOFF
+                  title: Turn Off
+                  authenticationRequired: false
+                  icon: sfsymbols:lightbulb.2
 
       # =========================================================
       # TURN OFF BUTTON PRESSED
