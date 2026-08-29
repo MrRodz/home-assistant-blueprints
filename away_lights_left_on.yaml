@@ -1,22 +1,54 @@
 blueprint:
   name: Away - Lights Left On
   description: >
-    Checks every hour while away. If any non-ignored lights are on,
-    sends a notification listing them with a button to turn them off.
+    Checks for lights left on when selected presence sensors indicate that
+    nobody is home. Supports multiple presence sensors, AND/OR logic,
+    individually inverted presence sensors, an initial delay, and repeated
+    checks while away.
   domain: automation
 
   input:
-    presence_sensor:
-      name: Presence sensor
-      description: Sensor that is OFF when you are away.
+
+    presence_entities:
+      name: Presence sensors
+      description: >
+        Select one or more presence binary sensors.
+        Normally OFF means away.
       selector:
         entity:
+          multiple: true
+          filter:
+            - domain: binary_sensor
+
+    presence_logic:
+      name: Presence logic
+      description: >
+        ALL requires every selected presence sensor to indicate away.
+        ANY requires only one selected sensor to indicate away.
+      default: all
+      selector:
+        select:
+          options:
+            - label: "ALL - everyone must be away"
+              value: all
+            - label: "ANY - one sensor being away is enough"
+              value: any
+
+    inverted_presence_entities:
+      name: Inverted presence sensors
+      description: >
+        Optional. Select any of the presence sensors above where ON means
+        away instead of OFF.
+      default: []
+      selector:
+        entity:
+          multiple: true
           filter:
             - domain: binary_sensor
 
     ignored_lights:
       name: Ignored lights
-      description: Select any lights that should not trigger the away warning.
+      description: Select lights that should not trigger the away warning.
       default: []
       selector:
         entity:
@@ -24,16 +56,33 @@ blueprint:
           filter:
             - domain: light
 
-    away_minutes:
-      name: Away time before checking
-      description: How long you must be away before warning about lights.
+    initial_delay_seconds:
+      name: Initial delay
+      description: >
+        Delay after the presence condition becomes true before checking lights.
+        Set to 0 for an immediate check.
       default: 30
       selector:
         number:
           min: 0
+          max: 3600
+          step: 1
+          unit_of_measurement: seconds
+          mode: box
+
+    repeat_interval_minutes:
+      name: Repeat check interval
+      description: >
+        How often to check again while away.
+        Set to 0 to only check once.
+      default: 60
+      selector:
+        number:
+          min: 0
           max: 240
-          step: 5
+          step: 1
           unit_of_measurement: minutes
+          mode: box
 
     notify_device:
       name: Device to notify
@@ -44,36 +93,116 @@ blueprint:
           filter:
             - integration: mobile_app
 
+
 variables:
+  presence_entities: !input presence_entities
+  presence_logic: !input presence_logic
+  inverted_presence_entities: !input inverted_presence_entities
   ignored_lights: !input ignored_lights
+  repeat_interval_minutes: !input repeat_interval_minutes
+
+  notification_action: >
+    LSWITCHOFF_{{ this.entity_id | replace('.', '_') }}
+
 
 triggers:
-  - trigger: time_pattern
-    hours: "/1"
-    id: Timer
 
+  # Trigger whenever any selected presence sensor changes
+  - trigger: state
+    entity_id: !input presence_entities
+    id: PresenceChanged
+
+  # Notification button
   - trigger: event
     event_type: mobile_app_notification_action
-    event_data:
-      action: LSWITCHOFF
     id: Response
+
+
+conditions: []
+
 
 actions:
   - choose:
 
       # =========================================================
-      # HOURLY CHECK
+      # PRESENCE CHANGED
       # =========================================================
       - conditions:
+
           - condition: trigger
-            id: Timer
+            id: PresenceChanged
 
-          - condition: state
-            entity_id: !input presence_sensor
-            state: "off"
-            for:
-              minutes: !input away_minutes
+          # Check whether our combined presence condition says AWAY
+          - condition: template
+            value_template: >
+              {% set ns = namespace(away_count=0) %}
 
+              {% for entity in presence_entities %}
+
+                {% if entity in inverted_presence_entities %}
+                  {% set entity_is_away = is_state(entity, 'on') %}
+                {% else %}
+                  {% set entity_is_away = is_state(entity, 'off') %}
+                {% endif %}
+
+                {% if entity_is_away %}
+                  {% set ns.away_count = ns.away_count + 1 %}
+                {% endif %}
+
+              {% endfor %}
+
+              {% if presence_logic == 'all' %}
+                {{
+                  presence_entities | count > 0
+                  and
+                  ns.away_count == presence_entities | count
+                }}
+              {% else %}
+                {{ ns.away_count > 0 }}
+              {% endif %}
+
+        sequence:
+
+          # -------------------------------------------------------
+          # Initial wait after presence condition becomes true
+          # -------------------------------------------------------
+          - delay:
+              seconds: !input initial_delay_seconds
+
+          # -------------------------------------------------------
+          # Recheck presence AFTER the delay
+          # -------------------------------------------------------
+          - condition: template
+            value_template: >
+              {% set ns = namespace(away_count=0) %}
+
+              {% for entity in presence_entities %}
+
+                {% if entity in inverted_presence_entities %}
+                  {% set entity_is_away = is_state(entity, 'on') %}
+                {% else %}
+                  {% set entity_is_away = is_state(entity, 'off') %}
+                {% endif %}
+
+                {% if entity_is_away %}
+                  {% set ns.away_count = ns.away_count + 1 %}
+                {% endif %}
+
+              {% endfor %}
+
+              {% if presence_logic == 'all' %}
+                {{
+                  presence_entities | count > 0
+                  and
+                  ns.away_count == presence_entities | count
+                }}
+              {% else %}
+                {{ ns.away_count > 0 }}
+              {% endif %}
+
+          # -------------------------------------------------------
+          # Are any non-ignored lights actually on?
+          # -------------------------------------------------------
           - condition: template
             value_template: >
               {{
@@ -84,7 +213,9 @@ actions:
                 | count > 0
               }}
 
-        sequence:
+          # -------------------------------------------------------
+          # Initial notification
+          # -------------------------------------------------------
           - device_id: !input notify_device
             domain: mobile_app
             type: notify
@@ -110,29 +241,155 @@ actions:
 
             data:
               actions:
-                - action: LSWITCHOFF
+                - action: "{{ notification_action }}"
                   title: Turn Off
                   authenticationRequired: false
                   icon: sfsymbols:lightbulb.2
+
+          # =======================================================
+          # REPEAT WHILE AWAY
+          # =======================================================
+          - repeat:
+              while:
+
+                # 0 disables repeating
+                - condition: template
+                  value_template: >
+                    {{ repeat_interval_minutes | int > 0 }}
+
+                # Still away?
+                - condition: template
+                  value_template: >
+                    {% set ns = namespace(away_count=0) %}
+
+                    {% for entity in presence_entities %}
+
+                      {% if entity in inverted_presence_entities %}
+                        {% set entity_is_away = is_state(entity, 'on') %}
+                      {% else %}
+                        {% set entity_is_away = is_state(entity, 'off') %}
+                      {% endif %}
+
+                      {% if entity_is_away %}
+                        {% set ns.away_count = ns.away_count + 1 %}
+                      {% endif %}
+
+                    {% endfor %}
+
+                    {% if presence_logic == 'all' %}
+                      {{
+                        presence_entities | count > 0
+                        and
+                        ns.away_count == presence_entities | count
+                      }}
+                    {% else %}
+                      {{ ns.away_count > 0 }}
+                    {% endif %}
+
+                # Still have lights on?
+                - condition: template
+                  value_template: >
+                    {{
+                      states.light
+                      | selectattr('state', 'eq', 'on')
+                      | rejectattr('entity_id', 'in', ignored_lights)
+                      | list
+                      | count > 0
+                    }}
+
+              sequence:
+
+                # Wait selected repeat period
+                - delay:
+                    minutes: !input repeat_interval_minutes
+
+                # Check presence again after waiting
+                - condition: template
+                  value_template: >
+                    {% set ns = namespace(away_count=0) %}
+
+                    {% for entity in presence_entities %}
+
+                      {% if entity in inverted_presence_entities %}
+                        {% set entity_is_away = is_state(entity, 'on') %}
+                      {% else %}
+                        {% set entity_is_away = is_state(entity, 'off') %}
+                      {% endif %}
+
+                      {% if entity_is_away %}
+                        {% set ns.away_count = ns.away_count + 1 %}
+                      {% endif %}
+
+                    {% endfor %}
+
+                    {% if presence_logic == 'all' %}
+                      {{
+                        presence_entities | count > 0
+                        and
+                        ns.away_count == presence_entities | count
+                      }}
+                    {% else %}
+                      {{ ns.away_count > 0 }}
+                    {% endif %}
+
+                # Check lights again
+                - condition: template
+                  value_template: >
+                    {{
+                      states.light
+                      | selectattr('state', 'eq', 'on')
+                      | rejectattr('entity_id', 'in', ignored_lights)
+                      | list
+                      | count > 0
+                    }}
+
+                # Send another warning
+                - device_id: !input notify_device
+                  domain: mobile_app
+                  type: notify
+
+                  title: >
+                    There are {{
+                      states.light
+                      | selectattr('state', 'eq', 'on')
+                      | rejectattr('entity_id', 'in', ignored_lights)
+                      | list
+                      | count
+                    }} lights still on
+
+                  message: >
+                    {{
+                      states.light
+                      | selectattr('state', 'eq', 'on')
+                      | rejectattr('entity_id', 'in', ignored_lights)
+                      | map(attribute='name')
+                      | list
+                      | join(', ')
+                    }}
+
+                  data:
+                    actions:
+                      - action: "{{ notification_action }}"
+                        title: Turn Off
+                        authenticationRequired: false
+                        icon: sfsymbols:lightbulb.2
+
 
       # =========================================================
       # TURN OFF BUTTON PRESSED
       # =========================================================
       - conditions:
+
           - condition: trigger
             id: Response
 
+          # Only respond to THIS automation's notification
           - condition: template
             value_template: >
-              {{
-                states.light
-                | selectattr('state', 'eq', 'on')
-                | rejectattr('entity_id', 'in', ignored_lights)
-                | list
-                | count > 0
-              }}
+              {{ trigger.event.data.action == notification_action }}
 
         sequence:
+
           - action: light.turn_off
             target:
               entity_id: >
@@ -144,4 +401,6 @@ actions:
                   | list
                 }}
 
-mode: single
+
+mode: restart
+max_exceeded: silent
