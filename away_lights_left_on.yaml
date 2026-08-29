@@ -36,12 +36,13 @@ blueprint:
           step: 5
           unit_of_measurement: minutes
 
-    notification_service:
-      name: Notification service
-      description: Mobile app notification service.
-      default: notify.mobile_app_rodz
-      selector:
-        text:
+notify_device:
+  name: Device to notify
+  description: Select the phone or tablet running the Home Assistant Companion App.
+  selector:
+    device:
+      filter:
+        - integration: mobile_app
 
 variables:
   ignored_lights: !input ignored_lights
@@ -84,8 +85,9 @@ actions:
               }}
 
         sequence:
-          - action: !input notification_service
-            data:
+            - device_id: !input notify_device
+              domain: mobile_app
+              type: notify
               title: >
                 There are {{
                   states.light
@@ -94,6 +96,21 @@ actions:
                   | list
                   | count
                 }} lights on
+              message: >
+                {{
+                  states.light
+                  | selectattr('state', 'eq', 'on')
+                  | rejectattr('entity_id', 'in', ignored_lights)
+                  | map(attribute='name')
+                  | list
+                  | join(', ')
+                }}
+              data:
+                actions:
+                  - action: LSWITCHOFF
+                    title: Turn Off
+                    authenticationRequired: false
+                    icon: sfsymbols:lightbulb.2
 
               message: >
                 {{
