@@ -1,0 +1,144 @@
+blueprint:
+  name: Away - Lights Left On
+  description: >
+    Checks every hour while away. If any non-ignored lights are on,
+    sends a notification listing them with a button to turn them off.
+  domain: automation
+
+  input:
+    presence_sensor:
+      name: Presence sensor
+      description: Sensor that is OFF when you are away.
+      default: binary_sensor.rodz_home
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+
+    ignored_lights:
+      name: Ignored lights
+      description: Select any lights that should not trigger the away warning.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: light
+
+    away_minutes:
+      name: Away time before checking
+      description: How long you must be away before warning about lights.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 240
+          step: 5
+          unit_of_measurement: minutes
+
+    notification_service:
+      name: Notification service
+      description: Mobile app notification service.
+      default: notify.mobile_app_rodz
+      selector:
+        text:
+
+variables:
+  ignored_lights: !input ignored_lights
+
+triggers:
+  - trigger: time_pattern
+    hours: "/1"
+    id: Timer
+
+  - trigger: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: LSWITCHOFF
+    id: Response
+
+actions:
+  - choose:
+
+      # =========================================================
+      # HOURLY CHECK
+      # =========================================================
+      - conditions:
+          - condition: trigger
+            id: Timer
+
+          - condition: state
+            entity_id: !input presence_sensor
+            state: "off"
+            for:
+              minutes: !input away_minutes
+
+          - condition: template
+            value_template: >
+              {{
+                states.light
+                | selectattr('state', 'eq', 'on')
+                | rejectattr('entity_id', 'in', ignored_lights)
+                | list
+                | count > 0
+              }}
+
+        sequence:
+          - action: !input notification_service
+            data:
+              title: >
+                There are {{
+                  states.light
+                  | selectattr('state', 'eq', 'on')
+                  | rejectattr('entity_id', 'in', ignored_lights)
+                  | list
+                  | count
+                }} lights on
+
+              message: >
+                {{
+                  states.light
+                  | selectattr('state', 'eq', 'on')
+                  | rejectattr('entity_id', 'in', ignored_lights)
+                  | map(attribute='name')
+                  | list
+                  | join(', ')
+                }}
+
+              data:
+                actions:
+                  - action: LSWITCHOFF
+                    title: Turn Off
+                    authenticationRequired: false
+                    icon: sfsymbols:lightbulb.2
+
+      # =========================================================
+      # TURN OFF BUTTON PRESSED
+      # =========================================================
+      - conditions:
+          - condition: trigger
+            id: Response
+
+          - condition: template
+            value_template: >
+              {{
+                states.light
+                | selectattr('state', 'eq', 'on')
+                | rejectattr('entity_id', 'in', ignored_lights)
+                | list
+                | count > 0
+              }}
+
+        sequence:
+          - action: light.turn_off
+            target:
+              entity_id: >
+                {{
+                  states.light
+                  | selectattr('state', 'eq', 'on')
+                  | rejectattr('entity_id', 'in', ignored_lights)
+                  | map(attribute='entity_id')
+                  | list
+                }}
+
+mode: single
