@@ -1,10 +1,15 @@
+# Away Presence - Lights Left On Alert & Remote Off
+# Version: 1.2.0
+# Updated: 2026-08-29
+
 blueprint:
-  name: Away - Lights Left On
+  name: Away Presence - Lights Left On Alert & Remote Off v1.2.0
   description: >
-    Checks for lights left on when selected presence sensors indicate that
-    nobody is home. Supports multiple presence sensors, AND/OR logic,
-    individually inverted presence sensors, an initial delay, and repeated
-    checks while away.
+    Checks selected presence sensors to determine when people are away.
+    After a configurable delay, checks for non-ignored lights that are still on
+    and sends a mobile notification with a button to turn them off.
+    Supports multiple presence sensors, ALL/ANY logic, inverted sensors,
+    ignored lights, and configurable repeat reminders.
   domain: automation
 
   input:
@@ -56,33 +61,29 @@ blueprint:
           filter:
             - domain: light
 
-    initial_delay_seconds:
+    initial_delay:
       name: Initial delay
       description: >
-        Delay after the presence condition becomes true before checking lights.
-        Set to 0 for an immediate check.
-      default: 30
+        How long to wait after the presence condition becomes true
+        before checking the lights.
+      default:
+        hours: 0
+        minutes: 0
+        seconds: 30
       selector:
-        number:
-          min: 0
-          max: 3600
-          step: 1
-          unit_of_measurement: seconds
-          mode: box
+        duration:
 
-    repeat_interval_minutes:
+    repeat_interval:
       name: Repeat check interval
       description: >
-        How often to check again while away.
-        Set to 0 to only check once.
-      default: 60
+        How long to wait between repeated checks.
+        Set hours, minutes and seconds to 0 to disable repeated checks.
+      default:
+        hours: 1
+        minutes: 0
+        seconds: 0
       selector:
-        number:
-          min: 0
-          max: 240
-          step: 1
-          unit_of_measurement: minutes
-          mode: box
+        duration:
 
     notify_device:
       name: Device to notify
@@ -99,7 +100,14 @@ variables:
   presence_logic: !input presence_logic
   inverted_presence_entities: !input inverted_presence_entities
   ignored_lights: !input ignored_lights
-  repeat_interval_minutes: !input repeat_interval_minutes
+  repeat_interval: !input repeat_interval
+
+  repeat_interval_seconds: >
+    {{
+      (repeat_interval.get('hours', 0) | int * 3600)
+      + (repeat_interval.get('minutes', 0) | int * 60)
+      + (repeat_interval.get('seconds', 0) | int)
+    }}
 
   notification_action: >
     LSWITCHOFF_{{ this.entity_id | replace('.', '_') }}
@@ -107,12 +115,10 @@ variables:
 
 triggers:
 
-  # Trigger whenever any selected presence sensor changes
   - trigger: state
     entity_id: !input presence_entities
     id: PresenceChanged
 
-  # Notification button
   - trigger: event
     event_type: mobile_app_notification_action
     id: Response
@@ -132,13 +138,11 @@ actions:
           - condition: trigger
             id: PresenceChanged
 
-          # Check whether our combined presence condition says AWAY
           - condition: template
             value_template: >
               {% set ns = namespace(away_count=0) %}
 
               {% for entity in presence_entities %}
-
                 {% if entity in inverted_presence_entities %}
                   {% set entity_is_away = is_state(entity, 'on') %}
                 {% else %}
@@ -148,14 +152,12 @@ actions:
                 {% if entity_is_away %}
                   {% set ns.away_count = ns.away_count + 1 %}
                 {% endif %}
-
               {% endfor %}
 
               {% if presence_logic == 'all' %}
                 {{
                   presence_entities | count > 0
-                  and
-                  ns.away_count == presence_entities | count
+                  and ns.away_count == presence_entities | count
                 }}
               {% else %}
                 {{ ns.away_count > 0 }}
@@ -163,21 +165,15 @@ actions:
 
         sequence:
 
-          # -------------------------------------------------------
-          # Initial wait after presence condition becomes true
-          # -------------------------------------------------------
-          - delay:
-              seconds: !input initial_delay_seconds
+          # Initial delay
+          - delay: !input initial_delay
 
-          # -------------------------------------------------------
-          # Recheck presence AFTER the delay
-          # -------------------------------------------------------
+          # Recheck presence after delay
           - condition: template
             value_template: >
               {% set ns = namespace(away_count=0) %}
 
               {% for entity in presence_entities %}
-
                 {% if entity in inverted_presence_entities %}
                   {% set entity_is_away = is_state(entity, 'on') %}
                 {% else %}
@@ -187,22 +183,18 @@ actions:
                 {% if entity_is_away %}
                   {% set ns.away_count = ns.away_count + 1 %}
                 {% endif %}
-
               {% endfor %}
 
               {% if presence_logic == 'all' %}
                 {{
                   presence_entities | count > 0
-                  and
-                  ns.away_count == presence_entities | count
+                  and ns.away_count == presence_entities | count
                 }}
               {% else %}
                 {{ ns.away_count > 0 }}
               {% endif %}
 
-          # -------------------------------------------------------
-          # Are any non-ignored lights actually on?
-          # -------------------------------------------------------
+          # Check for non-ignored lights
           - condition: template
             value_template: >
               {{
@@ -213,9 +205,7 @@ actions:
                 | count > 0
               }}
 
-          # -------------------------------------------------------
           # Initial notification
-          # -------------------------------------------------------
           - device_id: !input notify_device
             domain: mobile_app
             type: notify
@@ -246,16 +236,17 @@ actions:
                   authenticationRequired: false
                   icon: sfsymbols:lightbulb.2
 
+
           # =======================================================
           # REPEAT WHILE AWAY
           # =======================================================
           - repeat:
               while:
 
-                # 0 disables repeating
+                # All zero disables repeats
                 - condition: template
                   value_template: >
-                    {{ repeat_interval_minutes | int > 0 }}
+                    {{ repeat_interval_seconds | int > 0 }}
 
                 # Still away?
                 - condition: template
@@ -263,7 +254,6 @@ actions:
                     {% set ns = namespace(away_count=0) %}
 
                     {% for entity in presence_entities %}
-
                       {% if entity in inverted_presence_entities %}
                         {% set entity_is_away = is_state(entity, 'on') %}
                       {% else %}
@@ -273,14 +263,12 @@ actions:
                       {% if entity_is_away %}
                         {% set ns.away_count = ns.away_count + 1 %}
                       {% endif %}
-
                     {% endfor %}
 
                     {% if presence_logic == 'all' %}
                       {{
                         presence_entities | count > 0
-                        and
-                        ns.away_count == presence_entities | count
+                        and ns.away_count == presence_entities | count
                       }}
                     {% else %}
                       {{ ns.away_count > 0 }}
@@ -299,17 +287,14 @@ actions:
 
               sequence:
 
-                # Wait selected repeat period
-                - delay:
-                    minutes: !input repeat_interval_minutes
+                - delay: !input repeat_interval
 
-                # Check presence again after waiting
+                # Recheck presence after waiting
                 - condition: template
                   value_template: >
                     {% set ns = namespace(away_count=0) %}
 
                     {% for entity in presence_entities %}
-
                       {% if entity in inverted_presence_entities %}
                         {% set entity_is_away = is_state(entity, 'on') %}
                       {% else %}
@@ -319,20 +304,18 @@ actions:
                       {% if entity_is_away %}
                         {% set ns.away_count = ns.away_count + 1 %}
                       {% endif %}
-
                     {% endfor %}
 
                     {% if presence_logic == 'all' %}
                       {{
                         presence_entities | count > 0
-                        and
-                        ns.away_count == presence_entities | count
+                        and ns.away_count == presence_entities | count
                       }}
                     {% else %}
                       {{ ns.away_count > 0 }}
                     {% endif %}
 
-                # Check lights again
+                # Recheck lights
                 - condition: template
                   value_template: >
                     {{
@@ -343,7 +326,7 @@ actions:
                       | count > 0
                     }}
 
-                # Send another warning
+                # Repeat notification
                 - device_id: !input notify_device
                   domain: mobile_app
                   type: notify
@@ -383,7 +366,6 @@ actions:
           - condition: trigger
             id: Response
 
-          # Only respond to THIS automation's notification
           - condition: template
             value_template: >
               {{ trigger.event.data.action == notification_action }}
