@@ -1,7 +1,7 @@
 blueprint:
-  name: "YAMA - Yet Another Motion Automation V10.1"
+  name: "YAMA - Yet Another Motion Automation V10.2"
   description: >
-    YAMA V10.1 - motion-controlled lighting and scenes.
+    YAMA V10.2 - motion-controlled lighting and scenes.
 
     Based on the behaviour of YAMA V10, with local fixes:
     - Removes the fake scene.none placeholder so Spook does not report ghost scenes.
