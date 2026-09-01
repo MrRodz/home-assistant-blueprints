@@ -1,31 +1,30 @@
 blueprint:
-  name: "YAMA - Yet Another Motion Automation V10.2"
+  name: "YAMA - Yet Another Motion Automation V10.11"
   description: >
-    YAMA V10.2 - motion-controlled lighting and scenes.
+    # YAMA V10.11
 
-    Based on the behaviour of YAMA V10, with local fixes:
-    - Removes the fake scene.none placeholder so Spook does not report ghost scenes.
-    - Optional scenes use empty scene targets instead.
-    - Motion-off is allowed to complete even if the automation blocker or sun
-      elevation condition changes after the lights were turned on.
-    - The no-motion blocker only blocks the no-motion action when it is actually
-      in the selected blocking state.
+    Local maintenance update based on Networkingcat's YAMA V10.
 
-    Supports a motion entity, light target, four time-of-day scenes, ambient
-    scene, no-motion scene, automation blocker, no-motion blocker and sun
-    elevation limit.
+    Changes from V10:
+    - Removes the fake optional-scene placeholder that Spook reports as a missing entity.
+    - Optional scene inputs now use an empty value when no scene is selected.
+    - Keeps YAMA's original scene action syntax for compatibility.
+    - Allows the motion-off path to run even if the automation blocker or sun
+      elevation condition changes after the lights were switched on.
+
+    Turn on lights or scenes when motion is detected.
+    Four different scenes can be defined depending on time of day.
   domain: automation
 
   input:
     motion_entity:
       name: Motion Sensor
-      description: Entity that changes between off and on when motion/occupancy changes.
+      description: Motion Sensor or a group with Motion Sensors (can be anything switching between "on" and "off").
       selector:
         entity: {}
 
     light_target:
       name: Light
-      description: Light target used when no time-of-day scene is selected.
       selector:
         target:
           entity:
@@ -33,165 +32,153 @@ blueprint:
 
     no_motion_wait:
       name: Wait time
-      description: Time the motion entity must remain off before the no-motion action runs.
+      description: Time to leave the light on after last motion is detected.
       default: 120
       selector:
         number:
           min: 0
           max: 3600
-          step: 1
           unit_of_measurement: seconds
-          mode: box
 
     automation_blocker:
       name: Automation Blocker (Optional)
-      description: >
-        Optional entity that must be in the state selected below before a
-        motion-on action is allowed. Motion-off is still allowed so lights
-        cannot be left stuck on.
-      default: null
+      description: Only allow motion-on if this entity is in the desired state.
+      default:
       selector:
         entity: {}
 
     automation_blocker_boolean:
-      name: Automation Blocker Required State
-      description: ON means the blocker must be on; OFF means it must be off.
+      name: Automation Blocker Chooser (Optional)
+      description: Desired state of automation blocker. On = blocker must be on; Off = blocker must be off.
       default: false
       selector:
         boolean: {}
 
     no_motion_blocker:
       name: No Motion Blocker (Optional)
-      description: >
-        Optional entity that prevents the no-motion action while it is in the
-        blocking state selected below.
-      default: null
+      description: No-motion sequence follows the original YAMA V10 blocker behaviour.
+      default:
       selector:
         entity: {}
 
     no_motion_blocker_boolean:
-      name: No Motion Blocker State
-      description: ON means block while this entity is on; OFF means block while it is off.
+      name: No Motion Chooser (Optional)
+      description: Desired state of no-motion blocker, as used by original YAMA V10.
       default: false
       selector:
         boolean: {}
 
     elevation_check:
-      name: Sun Elevation Limit (Optional)
-      description: >
-        Motion-on is allowed when the sun elevation is at or below this value.
-        Leave at 90 degrees to effectively disable the elevation check.
-      default: 90
+      name: Sun elevation check (Optional)
+      description: This is the angle between the sun and the horizon. Negative values mean the sun is below the horizon.
+      default:
       selector:
         number:
           min: -90
           max: 90
-          step: 1
           unit_of_measurement: degrees
-          mode: slider
 
     scene_ambient:
       name: Ambient Scene (Optional)
-      description: Scene to activate after motion clears during the ambient time window.
-      default: {}
+      description: Scene for ambient state. Will be activated when no motion is detected.
+      default:
       selector:
-        target:
-          entity:
-            domain: scene
+        entity:
+          domain: scene
 
     time_scene_ambient_start:
-      name: Ambient time frame start
+      name: Ambient time frame start (Optional)
+      description: Time from which the ambient scene will be activated.
       default: "00:00:00"
       selector:
         time: {}
 
     time_scene_ambient_end:
-      name: Ambient time frame end
+      name: Ambient time frame end (Optional)
+      description: Time from which the ambient scene will no longer be activated.
       default: "00:00:00"
       selector:
         time: {}
 
     scene_morning:
-      name: Morning Scene (Optional)
-      default: {}
+      name: Scene for the morning (Optional)
+      default:
       selector:
-        target:
-          entity:
-            domain: scene
+        entity:
+          domain: scene
 
     time_scene_morning:
-      name: Morning scene start
+      name: Time for the morning scene (Optional)
+      description: Time from which the morning scene will be activated if motion is detected.
       default: "00:00:00"
       selector:
         time: {}
 
     scene_day:
-      name: Day Scene (Optional)
-      default: {}
+      name: Scene for the bright day (Optional)
+      default:
       selector:
-        target:
-          entity:
-            domain: scene
+        entity:
+          domain: scene
 
     time_scene_day:
-      name: Day scene start
+      name: Time for the day scene (Optional)
+      description: Time from which the day scene will be activated if motion is detected.
       default: "00:00:00"
       selector:
         time: {}
 
     scene_evening:
-      name: Evening Scene (Optional)
-      default: {}
+      name: Scene for the evening (Optional)
+      default:
       selector:
-        target:
-          entity:
-            domain: scene
+        entity:
+          domain: scene
 
     time_scene_evening:
-      name: Evening scene start
+      name: Time for the evening scene (Optional)
+      description: Time from which the evening scene will be activated if motion is detected.
       default: "00:00:00"
       selector:
         time: {}
 
     scene_night:
-      name: Night Scene (Optional)
-      default: {}
+      name: Scene for the dark night (Optional)
+      default:
       selector:
-        target:
-          entity:
-            domain: scene
+        entity:
+          domain: scene
 
     time_scene_night:
-      name: Night scene start
+      name: Time for the night scene (Optional)
+      description: Time from which the night scene will be activated if motion is detected.
       default: "00:00:00"
       selector:
         time: {}
 
     scene_no_motion:
-      name: No Motion Scene (Optional)
-      description: Scene to activate when motion clears instead of turning the light target off.
-      default: {}
+      name: Default scene for no motion (Optional)
+      description: Set this scene if you want to activate a scene when motion stops instead of turning the light target off.
+      default:
       selector:
-        target:
-          entity:
-            domain: scene
+        entity:
+          domain: scene
 
 mode: restart
 max_exceeded: silent
 
 variables:
+  scene_ambient: !input scene_ambient
+  scene_morning: !input scene_morning
+  scene_day: !input scene_day
+  scene_evening: !input scene_evening
+  scene_night: !input scene_night
   automation_blocker: !input automation_blocker
   automation_blocker_boolean: !input automation_blocker_boolean
   no_motion_blocker: !input no_motion_blocker
   no_motion_blocker_boolean: !input no_motion_blocker_boolean
   elevation_check: !input elevation_check
-
-  scene_ambient_target: !input scene_ambient
-  scene_morning_target: !input scene_morning
-  scene_day_target: !input scene_day
-  scene_evening_target: !input scene_evening
-  scene_night_target: !input scene_night
-  scene_no_motion_target: !input scene_no_motion
+  scene_no_motion: !input scene_no_motion
 
 trigger:
   - platform: state
@@ -208,140 +195,127 @@ trigger:
     id: motion_off
 
 condition:
-  - alias: Allow motion-off or require automation blocker to match
+  # Apply blocker only when motion turns ON. Always permit the OFF path.
+  - alias: Automation blocker allows motion-on, or this is the motion-off path
     condition: template
     value_template: >-
       {{
         trigger.id == 'motion_off'
-        or automation_blocker is none
+        or automation_blocker == none
         or automation_blocker == ''
-        or (
-          automation_blocker_boolean
-          and is_state(automation_blocker, 'on')
-        )
-        or (
-          not automation_blocker_boolean
-          and is_state(automation_blocker, 'off')
-        )
+        or (automation_blocker_boolean and is_state(automation_blocker, 'on'))
+        or (not automation_blocker_boolean and is_state(automation_blocker, 'off'))
       }}
 
-  - alias: Allow motion-off or require sun below elevation limit
+  # Apply sun elevation only when motion turns ON. Always permit the OFF path.
+  - alias: Sun elevation allows motion-on, or this is the motion-off path
     condition: template
     value_template: >-
       {{
         trigger.id == 'motion_off'
-        or (
-          state_attr('sun.sun', 'elevation') | float(90)
-          <= elevation_check | float(90)
-        )
+        or elevation_check == none
+        or (state_attr('sun.sun', 'elevation') | float(90)) <= (elevation_check | float(90))
       }}
 
 action:
   - choose:
+      ######################################################################
+      # MOTION ON
+      ######################################################################
       - alias: Motion detected
         conditions:
           - condition: trigger
             id: motion_on
         sequence:
           - choose:
-              - alias: Use morning scene
+              - alias: Morning scene
                 conditions:
                   - alias: Morning scene is configured
                     condition: template
-                    value_template: "{{ scene_morning_target | length > 0 }}"
+                    value_template: "{{ scene_morning not in [none, ''] }}"
                   - condition: time
                     after: !input time_scene_morning
                     before: !input time_scene_day
                 sequence:
-                  - action: scene.turn_on
-                    target: !input scene_morning
+                  - scene: !input scene_morning
 
-              - alias: Use day scene
+              - alias: Day scene
                 conditions:
                   - alias: Day scene is configured
                     condition: template
-                    value_template: "{{ scene_day_target | length > 0 }}"
+                    value_template: "{{ scene_day not in [none, ''] }}"
                   - condition: time
                     after: !input time_scene_day
                     before: !input time_scene_evening
                 sequence:
-                  - action: scene.turn_on
-                    target: !input scene_day
+                  - scene: !input scene_day
 
-              - alias: Use evening scene
+              - alias: Evening scene
                 conditions:
                   - alias: Evening scene is configured
                     condition: template
-                    value_template: "{{ scene_evening_target | length > 0 }}"
+                    value_template: "{{ scene_evening not in [none, ''] }}"
                   - condition: time
                     after: !input time_scene_evening
                     before: !input time_scene_night
                 sequence:
-                  - action: scene.turn_on
-                    target: !input scene_evening
+                  - scene: !input scene_evening
 
-              - alias: Use night scene
+              - alias: Night scene
                 conditions:
                   - alias: Night scene is configured
                     condition: template
-                    value_template: "{{ scene_night_target | length > 0 }}"
+                    value_template: "{{ scene_night not in [none, ''] }}"
                   - condition: time
                     after: !input time_scene_night
                     before: !input time_scene_morning
                 sequence:
-                  - action: scene.turn_on
-                    target: !input scene_night
+                  - scene: !input scene_night
 
             default:
-              - alias: Turn light target on
-                action: light.turn_on
+              - service: light.turn_on
                 target: !input light_target
 
+      ######################################################################
+      # MOTION OFF
+      ######################################################################
       - alias: Motion cleared
         conditions:
           - condition: trigger
             id: motion_off
 
-          - alias: No-motion blocker is not currently blocking
+          # Retain original YAMA V10 no-motion-blocker semantics.
+          - alias: No-motion blocker permits the no-motion sequence
             condition: template
             value_template: >-
               {{
-                no_motion_blocker is none
+                no_motion_blocker == none
                 or no_motion_blocker == ''
-                or (
-                  no_motion_blocker_boolean
-                  and not is_state(no_motion_blocker, 'on')
-                )
-                or (
-                  not no_motion_blocker_boolean
-                  and not is_state(no_motion_blocker, 'off')
-                )
+                or (no_motion_blocker_boolean and is_state(no_motion_blocker, 'on'))
+                or (not no_motion_blocker_boolean and is_state(no_motion_blocker, 'off'))
               }}
 
         sequence:
           - choose:
-              - alias: Restore ambient scene
+              - alias: Ambient scene
                 conditions:
                   - alias: Ambient scene is configured
                     condition: template
-                    value_template: "{{ scene_ambient_target | length > 0 }}"
+                    value_template: "{{ scene_ambient not in [none, ''] }}"
                   - condition: time
                     after: !input time_scene_ambient_start
                     before: !input time_scene_ambient_end
                 sequence:
-                  - action: scene.turn_on
-                    target: !input scene_ambient
+                  - scene: !input scene_ambient
 
-              - alias: Use configured no-motion scene
+              - alias: Default no-motion scene
                 conditions:
                   - alias: No-motion scene is configured
                     condition: template
-                    value_template: "{{ scene_no_motion_target | length > 0 }}"
+                    value_template: "{{ scene_no_motion not in [none, ''] }}"
                 sequence:
-                  - action: scene.turn_on
-                    target: !input scene_no_motion
+                  - scene: !input scene_no_motion
 
             default:
-              - alias: Turn light target off
-                action: light.turn_off
+              - service: light.turn_off
                 target: !input light_target
